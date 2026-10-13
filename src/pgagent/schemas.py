@@ -69,7 +69,7 @@ class AuditRecord(Strict):
     id: UUID = Field(default_factory=uuid4)
     ts: datetime = Field(default_factory=_now)
     finding: Finding
-    action: ProposedAction
+    action: ProposedAction | None
     decision: PolicyDecision
     before_metrics: dict[str, Any] = {}
     after_metrics: dict[str, Any] = {}
