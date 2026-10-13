@@ -67,4 +67,8 @@ def evaluate(action: ProposedAction, finding: Finding, ro) -> PolicyDecision:
             chk("still_idle_in_txn", row["state"] == "idle in transaction", str(row["state"]))
             chk("idle_long_enough", (row["idle_s"] or 0) >= settings.idle_txn_seconds, f"{row['idle_s']}s")
             chk("not_agent_session", not (row["application_name"] or "").startswith("pgagent"), "")
+            if settings.kill_requires_blocking:
+                n = ro.execute("SELECT count(*) AS n FROM pg_stat_activity "
+                               "WHERE %s::int = ANY(pg_blocking_pids(pid))", (p.pid,)).fetchone()["n"]
+                chk("is_blocking_others", n > 0, "session is not blocking anyone")
     return _verdict(tier, checks)

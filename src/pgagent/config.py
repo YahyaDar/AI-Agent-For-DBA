@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     stale_mod_ratio: float = 0.2
     stale_min_mod: int = 1_000
     idle_txn_seconds: int = 30
+    kill_requires_blocking: bool = False   # True = only kill idle-in-txn sessions that block others
     lock_wait_seconds: int = 5
     repl_lag_bytes: int = 8 * 1024 * 1024
 
