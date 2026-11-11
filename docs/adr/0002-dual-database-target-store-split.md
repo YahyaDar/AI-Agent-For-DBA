@@ -1,0 +1,3 @@
+# Dual-Database Split Between Monitored Target and Agent Store
+
+The PostgreSQL 17 cluster separates the **Monitored Target** (`bluebox`) from the **Agent Store** (`appdb`) with isolated non-superuser roles: `agent_ro` (`pg_monitor` on `bluebox`), `agent_exec` (`pg_maintain`, `pg_signal_backend`, `pg_read_all_stats` on `bluebox`, with `CONNECT` to `appdb` revoked), and `agent_store` (`INSERT`/`SELECT` on `appdb.agent.audit`, with `CONNECT` to `bluebox` revoked). This prevents autonomous maintenance or workload faults in the target database from corrupting or tampering with the agent's audit trail, rate-limit counters, or RAG knowledge store, while removing all superuser credentials from the agent runtime.

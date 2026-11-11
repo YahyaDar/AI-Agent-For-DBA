@@ -1,0 +1,3 @@
+# Deterministic Code-Only Policy Engine
+
+All safety and execution permissions are enforced by a deterministic, default-deny Python policy engine (`pgagent.policy.engine`) coupled with fixed SQL templates and PostgreSQL AST validation (`pglast`), never by an LLM. While an LLM may diagnose anomalies or propose candidate actions from the closed `ActionId` enum (and may downgrade an `allow` to `escalate`), it can never synthesize SQL or upgrade a `deny`/`escalate` to `allow`, eliminating prompt-injection escalation through hostile database contents (such as crafted query strings or relation names) and guaranteeing auditable, provable safety bounds.

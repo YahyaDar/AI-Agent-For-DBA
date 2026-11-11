@@ -1,0 +1,3 @@
+# Immediate Escalation Alerting with On-Demand Real-Time Copilot Diagnosis
+
+When the Healer encounters a high-risk finding or an action that evaluates to `escalate`, it records the escalation in `appdb.agent.audit` and alerts immediately without invoking the LLM inside the scheduled healing loop. The **Advisory Copilot** runs strictly on-demand when requested by the human DBA, re-querying the live state of `bluebox` at diagnosis time so that recommendations reflect current locks, transactions, and telemetry rather than stale background snapshots, while avoiding background LLM latency and rate-limit exhaustion on `openrouter/free`.
