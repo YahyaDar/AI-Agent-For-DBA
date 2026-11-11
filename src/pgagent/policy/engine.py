@@ -1,9 +1,17 @@
 from pydantic import ValidationError
+
 from pgagent.audit.store import count_executed_last_hour
 from pgagent.config import settings
 from pgagent.policy.catalog import CATALOG, PROTECTED_SCHEMAS, PidParams, TableParams
-from pgagent.schemas import (ActionId, CheckResult, Finding, PolicyDecision,
-                             ProposedAction, RiskTier, Verdict)
+from pgagent.schemas import (
+    ActionId,
+    CheckResult,
+    Finding,
+    PolicyDecision,
+    ProposedAction,
+    RiskTier,
+    Verdict,
+)
 
 AUTONOMOUS_TIERS = {RiskTier.LOW, RiskTier.MEDIUM}   # HIGH is never autonomous
 
@@ -14,7 +22,7 @@ def _verdict(tier, checks) -> PolicyDecision:
                               reasons=[f"{c.name}: {c.detail}".rstrip(": ") for c in failed])
     return PolicyDecision(verdict=Verdict.ALLOW, tier=tier, checks=checks, reasons=["all checks passed"])
 
-def evaluate(action: ProposedAction, finding: Finding, ro) -> PolicyDecision:
+def evaluate(action: ProposedAction, finding: Finding, ro, store=None) -> PolicyDecision:
     """Deterministic gate. No LLM involved. Default deny."""
     checks: list[CheckResult] = []
     def chk(name, ok, detail=""):
@@ -41,7 +49,7 @@ def evaluate(action: ProposedAction, finding: Finding, ro) -> PolicyDecision:
     chk("finding_justifies_action",
         finding.type == spec.finding_type and finding.id == action.finding_id,
         f"{action.action_id.value} requires finding type {spec.finding_type.value}")
-    n = count_executed_last_hour(ro)
+    n = count_executed_last_hour(store)
     chk("rate_limit", n < settings.max_actions_per_hour, f"{n}/{settings.max_actions_per_hour} actions in last hour")
 
     if isinstance(p, TableParams):

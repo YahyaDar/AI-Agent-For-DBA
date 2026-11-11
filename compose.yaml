@@ -1,6 +1,6 @@
 services:
   primary:
-    image: pgvector/pgvector:pg16
+    build: ./docker/postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -25,7 +25,7 @@ services:
       retries: 20
 
   replica:
-    image: pgvector/pgvector:pg16
+    build: ./docker/postgres
     user: postgres
     depends_on:
       primary: { condition: service_healthy }

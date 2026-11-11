@@ -1,9 +1,19 @@
+import os
+
 import psycopg
-from pgagent.config import settings
+
+LAB_PRIMARY_DSN = os.getenv(
+    "LAB_PRIMARY_DSN", "postgresql://postgres:postgres@localhost:5432/bluebox"
+)
+LAB_REPLICA_DSN = os.getenv(
+    "LAB_REPLICA_DSN", "postgresql://postgres:postgres@localhost:5433/bluebox"
+)
+
 
 def connect(replica=False, autocommit=True, app="scenario"):
-    dsn = settings.replica_dsn if replica else settings.primary_dsn
+    dsn = LAB_REPLICA_DSN if replica else LAB_PRIMARY_DSN
     return psycopg.connect(dsn, autocommit=autocommit, application_name=app)
+
 
 def kill_scenario_sessions():
     """Terminate any leftover scenario sessions so DROP TABLE can't block."""
@@ -12,6 +22,7 @@ def kill_scenario_sessions():
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
             "WHERE application_name LIKE 'scenario_%' AND pid <> pg_backend_pid()"
         )
+
 
 def drop_tables(*tables):
     kill_scenario_sessions()

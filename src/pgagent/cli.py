@@ -1,11 +1,14 @@
 import argparse
 from datetime import datetime
+
 from apscheduler.schedulers.blocking import BlockingScheduler
+
 from pgagent.audit.store import list_recent
 from pgagent.checks import run_all_checks
 from pgagent.config import settings
 from pgagent.healer import run_cycle
-from pgagent.tools.db import ro_conn
+from pgagent.tools.db import ro_conn, store_conn
+
 
 def main():
     p = argparse.ArgumentParser(prog="pgagent")
@@ -41,10 +44,10 @@ def main():
         except (KeyboardInterrupt, SystemExit):
             pass
     elif args.cmd == "audit":
-        with ro_conn() as c:
+        with store_conn() as c:
             for r_ in list_recent(c, args.n):
                 print(f"{r_['ts']:%H:%M:%S} {r_['verdict']:8} {r_['tier']:6} {r_['finding_type']:16} "
-                      f"{r_['target']:26} {str(r_['action_id'] or '-'):22} {r_['status'] or '-'}  {r_['reasons']}")
+                      f"{r_['target']:26} {r_['action_id'] or '-'!s:22} {r_['status'] or '-'}  {r_['reasons']}")
 
 if __name__ == "__main__":
     main()

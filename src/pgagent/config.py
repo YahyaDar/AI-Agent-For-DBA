@@ -1,12 +1,15 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-    primary_dsn: str = "postgresql://postgres:postgres@localhost:5432/appdb"
-    replica_dsn: str = "postgresql://postgres:postgres@localhost:5433/appdb"
-    ro_dsn: str = "postgresql://agent_ro:agent_ro_pw@localhost:5432/appdb"
-    # PROTOTYPE: executor uses the superuser. Harden with a dedicated role later.
-    exec_dsn: str = "postgresql://postgres:postgres@localhost:5432/appdb"
+
+    # Target database connections (bluebox)
+    ro_dsn: str = "postgresql://agent_ro:agent_ro_pw@localhost:5432/bluebox"
+    exec_dsn: str = "postgresql://agent_exec:agent_exec_pw@localhost:5432/bluebox"
+
+    # Store database connection (appdb)
+    store_dsn: str = "postgresql://agent_store:agent_store_pw@localhost:5432/appdb"
     llm_api_key: str = ""
     llm_model: str = ""
 

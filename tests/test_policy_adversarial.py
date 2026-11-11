@@ -1,19 +1,28 @@
-"""Adversarial tests: try to make the policy engine approve something unsafe.
-Needs the Docker lab running (skipped otherwise)."""
-import threading, time
+import threading
+import time
+
 import psycopg
 import pytest
 from pydantic import ValidationError
 
+from conftest import LAB_PRIMARY_DSN
 from pgagent import healer
 from pgagent.audit import store
 from pgagent.config import settings
 from pgagent.executor.actions import execute
 from pgagent.policy import evaluate
 from pgagent.policy.catalog import CATALOG, ActionSpec, TableParams
-from pgagent.schemas import (ActionId, Finding, FindingType, ProposedAction,
-                             RiskTier, Verdict)
+from pgagent.schemas import (
+    ActionId,
+    Finding,
+    FindingType,
+    ProposedAction,
+    RiskTier,
+    Verdict,
+)
 from pgagent.tools.db import ro_conn
+
+pytestmark = pytest.mark.lab
 
 # ---------- helpers ----------
 def failed(d):
@@ -57,7 +66,7 @@ def ro():
 def idle_session(ro):
     conns = []
     def make(app="adv_idle"):
-        c = psycopg.connect(settings.primary_dsn, autocommit=False, application_name=app)
+        c = psycopg.connect(LAB_PRIMARY_DSN, autocommit=False, application_name=app)
         c.execute("SELECT txid_current()")
         wait_state(ro, c.info.backend_pid, "idle in transaction")
         conns.append(c)
@@ -66,10 +75,10 @@ def idle_session(ro):
     for c in conns:
         try: c.rollback(); c.close()
         except Exception: pass
-
+ 
 @pytest.fixture
 def active_session(ro):
-    c = psycopg.connect(settings.primary_dsn, autocommit=True, application_name="adv_active")
+    c = psycopg.connect(LAB_PRIMARY_DSN, autocommit=True, application_name="adv_active")
     def run():
         try: c.execute("SELECT pg_sleep(60)")
         except Exception: pass
@@ -81,7 +90,7 @@ def active_session(ro):
 @pytest.fixture(scope="module")
 def objects():
     try:
-        c = psycopg.connect(settings.primary_dsn, autocommit=True)
+        c = psycopg.connect(LAB_PRIMARY_DSN, autocommit=True)
     except psycopg.OperationalError:
         pytest.skip("lab not running")
     c.execute("DROP VIEW IF EXISTS public.adv_view")
@@ -89,7 +98,12 @@ def objects():
     c.execute("CREATE TABLE public.adv_tbl (id int PRIMARY KEY)")
     c.execute("INSERT INTO public.adv_tbl VALUES (1)")
     c.execute("CREATE VIEW public.adv_view AS SELECT 1 AS x")
+    c.execute("CREATE SCHEMA IF NOT EXISTS agent")
+    c.execute("DROP TABLE IF EXISTS agent.audit")
+    c.execute("CREATE TABLE agent.audit (id int PRIMARY KEY)")
     yield
+    c.execute("DROP TABLE IF EXISTS agent.audit")
+    c.execute("DROP SCHEMA IF EXISTS agent")
     c.execute("DROP VIEW IF EXISTS public.adv_view")
     c.execute("DROP TABLE IF EXISTS public.adv_tbl")
     c.close()
@@ -167,7 +181,7 @@ def test_control_legit_vacuum_and_reindex_allowed(ro, objects):
     assert evaluate(a, f, ro).verdict == Verdict.ALLOW
 
 @pytest.mark.parametrize("schema,table", [("agent", "audit"), ("pg_catalog", "pg_class")])
-def test_protected_schemas_denied(ro, schema, table):
+def test_protected_schemas_denied(ro, objects, schema, table):
     a, f = table_case(ActionId.VACUUM_TABLE, FindingType.TABLE_BLOAT, schema, table)
     d = evaluate(a, f, ro)
     assert d.verdict == Verdict.DENY and failed(d) == {"schema_allowed"}
