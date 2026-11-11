@@ -37,6 +37,7 @@ def seen_recently(store, f: Finding, seconds: int) -> bool:
         return (
             c.execute(
                 "SELECT 1 FROM agent.audit WHERE finding_type=%s AND target=%s "
+                "AND status IS DISTINCT FROM 'skipped' "
                 "AND ts > now() - make_interval(secs => %s) LIMIT 1",
                 (f.type.value, f.target, seconds),
             ).fetchone()
@@ -44,8 +45,14 @@ def seen_recently(store, f: Finding, seconds: int) -> bool:
         )
 
 
-def count_executed_last_hour(store=None) -> int:
+def count_executed_last_hour(store=None, action_id: str | None = None) -> int:
     with _get_store(store) as c:
+        if action_id is not None:
+            return c.execute(
+                "SELECT count(*) AS n FROM agent.audit "
+                "WHERE status='success' AND action_id=%s AND ts > now() - interval '1 hour'",
+                (action_id,),
+            ).fetchone()["n"]
         return c.execute(
             "SELECT count(*) AS n FROM agent.audit "
             "WHERE status='success' AND ts > now() - interval '1 hour'"

@@ -1,9 +1,12 @@
 import time
+
 import psycopg
-from psycopg import sql
 from pglast import parse_sql
+from psycopg import sql
+
 from pgagent.config import settings
 from pgagent.policy.catalog import CATALOG, PidParams, TableParams
+from pgagent.policy.engine import _vacuum_actions
 from pgagent.schemas import ActionId, ExecutionResult, ProposedAction
 
 EXPECTED_STMT = {
@@ -12,6 +15,7 @@ EXPECTED_STMT = {
     ActionId.REINDEX_CONCURRENTLY: "ReindexStmt",
     ActionId.TERMINATE_BACKEND: "SelectStmt",
 }
+
 
 def build_sql(action: ProposedAction, conn) -> str:
     """SQL comes only from fixed templates + validated params, never from the LLM."""
@@ -33,6 +37,7 @@ def build_sql(action: ProposedAction, conn) -> str:
                  "WHERE pg_stat_activity.pid = ANY(pg_blocking_pids(w.pid)))")
     return f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE {cond}"
 
+
 def validate_ast(sql_text: str, action_id: ActionId) -> None:
     """Parse with the real Postgres parser: exactly one statement, of exactly the expected kind."""
     stmts = parse_sql(sql_text)
@@ -42,12 +47,17 @@ def validate_ast(sql_text: str, action_id: ActionId) -> None:
     if kind != EXPECTED_STMT[action_id]:
         raise ValueError(f"statement type {kind} not allowed for {action_id.value}")
 
+
 def snapshot(action: ProposedAction, ro) -> dict:
     p = CATALOG[action.action_id].params(**action.params)
     if isinstance(p, TableParams):
         row = ro.execute(
             "SELECT n_live_tup::bigint AS live, n_dead_tup::bigint AS dead, "
-            "n_mod_since_analyze::bigint AS mod_since_analyze, last_vacuum, last_analyze "
+            "n_mod_since_analyze::bigint AS mod_since_analyze, last_vacuum, last_analyze, "
+            "(SELECT count(*)::int FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid "
+            " JOIN pg_namespace n ON n.oid = c.relnamespace "
+            " WHERE n.nspname = pg_stat_user_tables.schemaname "
+            " AND c.relname = pg_stat_user_tables.relname AND NOT i.indisvalid) AS invalid_indexes "
             "FROM pg_stat_user_tables WHERE schemaname=%s AND relname=%s",
             (p.schema_name, p.table)).fetchone()
         return dict(row) if row else {}
@@ -72,6 +82,82 @@ def snapshot(action: ProposedAction, ro) -> dict:
     return {"exists": row is not None, **(dict(row) if row else {}),
             "direct_waiters": direct, "blocked_waiters": len(waiters), "waiter_pids": waiters,
             "locks_held": [dict(l) for l in locks]}
+
+
+def verify_postcondition(
+    action: ProposedAction, before: dict, after: dict, result: ExecutionResult
+) -> ExecutionResult:
+    """Verify target anomaly metric improved between before and after snapshots."""
+    if result.status != "success":
+        return result
+
+    aid = action.action_id
+    if aid in _vacuum_actions():
+        before_dead = before.get("dead", 0) or 0
+        after_dead = after.get("dead", 0) or 0
+        if before_dead > 0 and after_dead >= before_dead:
+            return result.model_copy(
+                update={
+                    "status": "failed",
+                    "error": f"postcondition failed: dead tuples did not decrease ({before_dead} -> {after_dead})",
+                }
+            )
+        if (
+            before_dead == 0
+            and before.get("last_vacuum") is not None
+            and after.get("last_vacuum") == before.get("last_vacuum")
+        ):
+            return result.model_copy(
+                update={
+                    "status": "failed",
+                    "error": "postcondition failed: last_vacuum did not advance",
+                }
+            )
+    elif aid == ActionId.ANALYZE_TABLE:
+        before_an = before.get("last_analyze")
+        after_an = after.get("last_analyze")
+        before_mod = before.get("mod_since_analyze", 0) or 0
+        after_mod = after.get("mod_since_analyze", 0) or 0
+        analyze_advanced = after_an is not None and after_an != before_an
+        mod_decreased = before_mod > 0 and after_mod < before_mod
+        if not (analyze_advanced or mod_decreased):
+            return result.model_copy(
+                update={
+                    "status": "failed",
+                    "error": (
+                        f"postcondition failed: last_analyze did not advance ({before_an} -> {after_an}) "
+                        f"and mod_since_analyze did not decrease ({before_mod} -> {after_mod})"
+                    ),
+                }
+            )
+    elif aid == ActionId.REINDEX_CONCURRENTLY:
+        after_invalid = after.get("invalid_indexes", 0) or 0
+        if after_invalid > 0:
+            return result.model_copy(
+                update={
+                    "status": "failed",
+                    "error": f"postcondition failed: {after_invalid} invalid index(es) remain after reindex",
+                }
+            )
+    elif isinstance(CATALOG.get(aid).params if CATALOG.get(aid) else None, type) and issubclass(
+        CATALOG[aid].params, PidParams
+    ):
+        after_exists = after.get("exists", False)
+        before_state = before.get("state")
+        after_state = after.get("state")
+        if after_exists and after_state == before_state:
+            return result.model_copy(
+                update={
+                    "status": "failed",
+                    "error": (
+                        f"postcondition failed: backend pid={action.params.get('pid')} "
+                        f"still exists in state {after_state!r}"
+                    ),
+                }
+            )
+
+    return result
+
 
 def execute(action: ProposedAction) -> ExecutionResult:
     # autocommit is required: VACUUM / REINDEX CONCURRENTLY cannot run inside a transaction block

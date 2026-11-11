@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,8 +26,19 @@ class Settings(BaseSettings):
 
     # policy
     max_actions_per_hour: int = 20
+    per_action_max_per_hour: dict[str, int] = Field(
+        default_factory=lambda: {
+            "analyze_table": 10,
+            "vacuum_table": 10,
+            "reindex_concurrently": 5,
+            "terminate_backend": 5,
+        }
+    )
     reindex_max_bytes: int = 1_000_000_000
+    load_guard_max_conn_ratio: float = 0.8
+    load_guard_max_repl_lag_bytes: int = 256 * 1024 * 1024
     cooldown_s: int = 120
     dry_run: bool = False
+
 
 settings = Settings()

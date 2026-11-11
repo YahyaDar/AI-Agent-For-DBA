@@ -3,7 +3,7 @@ import time
 from pgagent.audit import store
 from pgagent.checks import run_all_checks
 from pgagent.config import settings
-from pgagent.executor import execute, snapshot
+from pgagent.executor import execute, snapshot, verify_postcondition
 from pgagent.policy import evaluate
 from pgagent.schemas import (
     ActionId,
@@ -31,11 +31,13 @@ def propose(f: Finding) -> ProposedAction | None:
                               params={"pid": f.evidence["pid"]}, rationale="long idle-in-transaction session")
     return None
 
+
 def _record_audit(rec: AuditRecord, store_c=None) -> None:
     if store_c is not None:
         store.record(rec, store=store_c)
     else:
         store.record(rec)
+
 
 def handle(f: Finding, ro, store_c=None) -> None:
     action = propose(f)
@@ -54,11 +56,13 @@ def handle(f: Finding, ro, store_c=None) -> None:
     result = execute(action)
     time.sleep(1)                       # let stats settle before the after-snapshot
     after = snapshot(action, ro)
+    result = verify_postcondition(action, before, after, result)
     _record_audit(AuditRecord(finding=f, action=action, decision=decision,
                               before_metrics=before, after_metrics=after, result=result), store_c)
     print(f"[allow] {action.action_id.value} {f.target} -> {result.status}"
           f"{' (' + str(result.duration_ms) + 'ms)' if result.duration_ms is not None else ''}"
           f"{' ERROR: ' + result.error if result.error else ''}")
+
 
 def run_cycle() -> None:
     with ro_conn() as ro, store_conn() as sconn:
