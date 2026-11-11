@@ -1,4 +1,5 @@
 import os
+import time
 
 import psycopg
 import pytest
@@ -15,6 +16,16 @@ LAB_OWNER_DSN = os.getenv(
 LAB_APPDB_ADMIN_DSN = os.getenv(
     "LAB_APPDB_ADMIN_DSN", "postgresql://postgres:postgres@localhost:5432/appdb"
 )
+
+
+def wait_for(cond, what, timeout=10, interval=0.1):
+    """Poll condition periodically until true or timeout."""
+    end = time.time() + timeout
+    while time.time() < end:
+        if cond():
+            return
+        time.sleep(interval)
+    raise AssertionError(f"timed out waiting for: {what}")
 
 
 @pytest.fixture(autouse=True)

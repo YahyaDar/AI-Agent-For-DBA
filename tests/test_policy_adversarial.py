@@ -98,6 +98,12 @@ def objects():
     c.execute("CREATE TABLE public.adv_tbl (id int PRIMARY KEY)")
     c.execute("INSERT INTO public.adv_tbl VALUES (1)")
     c.execute("CREATE VIEW public.adv_view AS SELECT 1 AS x")
+    # Note on agent.audit inside bluebox:
+    # The real audit log lives in the agent store database (appdb). However,
+    # test_protected_schemas_denied asserts failed(d) == {"schema_allowed"}.
+    # If agent.audit did not exist in bluebox, is_ordinary_table would also fail,
+    # preventing clean verification. Creating a dummy relation here ensures is_ordinary_table
+    # passes, cleanly isolating schema_allowed as the sole failed check.
     c.execute("CREATE SCHEMA IF NOT EXISTS agent")
     c.execute("DROP TABLE IF EXISTS agent.audit")
     c.execute("CREATE TABLE agent.audit (id int PRIMARY KEY)")

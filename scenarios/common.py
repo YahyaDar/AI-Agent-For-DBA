@@ -16,11 +16,12 @@ def connect(replica=False, autocommit=True, app="scenario"):
 
 
 def kill_scenario_sessions():
-    """Terminate any leftover scenario sessions so DROP TABLE can't block."""
+    """Terminate any leftover scenario and workload sessions so DROP TABLE and VACUUM can't block."""
     with connect() as c:
         c.execute(
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-            "WHERE application_name LIKE 'scenario_%' AND pid <> pg_backend_pid()"
+            "WHERE (application_name LIKE 'scenario_%' OR application_name LIKE 'workload_%') "
+            "AND pid <> pg_backend_pid()"
         )
 
 
