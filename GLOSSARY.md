@@ -48,6 +48,20 @@ _Avoid_: Status, result, approval
 The pre-execution snapshot captured immediately before terminating or cancelling a backend session, preserving the session's identity, transaction state, last query, held locks, and direct/transitive blocked waiters.
 _Avoid_: Session log, kill dump, process trace
 
+**Escalation Alert**:
+The immediate notification emitted when the Healer records an `escalate` verdict, surfacing the finding ID, target resource, and evidence summary so a human DBA can invoke on-demand diagnosis.
+_Avoid_: Pager alert, background diagnosis, error log
+
+### Advisory Copilot & Knowledge
+
+**Self-Consistency Voting**:
+The diagnostic protocol that samples multiple independent root-cause hypotheses from the LLM over the same live telemetry and measures agreement before running a critic check.
+_Avoid_: Majority vote, ensemble model, retry loop
+
+**Incident Memory**:
+Human-confirmed historical diagnosis and remediation records stored as embeddings in the Agent Store and retrieved strictly as untrusted data context during future investigations.
+_Avoid_: Model fine-tuning, agent weights, chat history
+
 ### Throttling & Safety
 
 **Cooldown**:
