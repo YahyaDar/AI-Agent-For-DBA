@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+
 from pydantic import Field
+
 from pgagent.schemas import ActionId, FindingType, RiskTier, Strict
 
 IDENT = r"^[A-Za-z_][A-Za-z0-9_]*$"
@@ -24,4 +26,5 @@ CATALOG: dict[ActionId, ActionSpec] = {
     ActionId.VACUUM_TABLE:         ActionSpec(RiskTier.LOW,    TableParams, FindingType.TABLE_BLOAT),
     ActionId.REINDEX_CONCURRENTLY: ActionSpec(RiskTier.MEDIUM, TableParams, FindingType.INDEX_BLOAT),
     ActionId.TERMINATE_BACKEND:    ActionSpec(RiskTier.MEDIUM, PidParams,   FindingType.IDLE_IN_TXN),
+    ActionId.VACUUM_FREEZE:        ActionSpec(RiskTier.MEDIUM, TableParams, FindingType.XID_WRAPAROUND),
 }

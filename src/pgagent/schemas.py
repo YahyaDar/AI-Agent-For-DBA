@@ -1,11 +1,14 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Literal
 from uuid import UUID, uuid4
+
 from pydantic import BaseModel, ConfigDict, Field
 
-def _now() -> datetime: return datetime.now(timezone.utc)
+
+def _now() -> datetime: return datetime.now(UTC)
 
 class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")      # reject unknown fields from the LLM
@@ -21,12 +24,14 @@ class FindingType(StrEnum):
     IDLE_IN_TXN = "idle_in_txn"
     REPLICATION_LAG = "replication_lag"
     DEADLOCK = "deadlock"
+    XID_WRAPAROUND = "xid_wraparound"
 
 class ActionId(StrEnum):                            # the whitelist; grows in step 5
     ANALYZE_TABLE = "analyze_table"
     VACUUM_TABLE = "vacuum_table"
     REINDEX_CONCURRENTLY = "reindex_concurrently"
     TERMINATE_BACKEND = "terminate_backend"
+    VACUUM_FREEZE = "vacuum_freeze"
 
 class Finding(Strict):
     id: UUID = Field(default_factory=uuid4)

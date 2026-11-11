@@ -26,6 +26,16 @@ def propose(f: Finding) -> ProposedAction | None:
         return ProposedAction(finding_id=f.id, action_id=aid, proposed_by="rules",
                               params={"schema_name": schema, "table": table},
                               rationale=f"{f.type.value} detected")
+    if f.type == FindingType.XID_WRAPAROUND:
+        schema, table = f.target.split(".", 1)
+        return ProposedAction(finding_id=f.id, action_id=ActionId.VACUUM_FREEZE, proposed_by="rules",
+                              params={"schema_name": schema, "table": table},
+                              rationale=f"{f.type.value} detected")
+    if f.type == FindingType.INDEX_BLOAT:
+        schema, table = f.target.split(".", 1)
+        return ProposedAction(finding_id=f.id, action_id=ActionId.REINDEX_CONCURRENTLY, proposed_by="rules",
+                              params={"schema_name": schema, "table": table},
+                              rationale=f"{f.type.value} detected")
     if f.type == FindingType.IDLE_IN_TXN:
         return ProposedAction(finding_id=f.id, action_id=ActionId.TERMINATE_BACKEND, proposed_by="rules",
                               params={"pid": f.evidence["pid"]}, rationale="long idle-in-transaction session")

@@ -14,24 +14,15 @@ from pgagent.schemas import (
 )
 
 AUTONOMOUS_TIERS = {RiskTier.LOW, RiskTier.MEDIUM}   # HIGH is never autonomous
-ESCALATE_CHECKS = {"vacuum_futility"}
-
-
-def _action_set(*base: ActionId, include_freeze: bool = True) -> set[ActionId]:
-    out = set(base)
-    if include_freeze:
-        freeze = getattr(ActionId, "VACUUM_FREEZE", None)
-        if freeze is not None:
-            out.add(freeze)
-    return out
+ESCALATE_CHECKS = {"vacuum_futility", "xid_emergency_ceiling"}
 
 
 def _vacuum_actions() -> set[ActionId]:
-    return _action_set(ActionId.VACUUM_TABLE)
+    return {ActionId.VACUUM_TABLE, ActionId.VACUUM_FREEZE}
 
 
 def _heavy_maintenance_actions() -> set[ActionId]:
-    return _action_set(ActionId.REINDEX_CONCURRENTLY)
+    return {ActionId.REINDEX_CONCURRENTLY, ActionId.VACUUM_FREEZE}
 
 
 def _vacuum_futility_blockers(ro) -> list[str]:
@@ -126,10 +117,17 @@ def evaluate(action: ProposedAction, finding: Finding, ro, store=None) -> Policy
         chk("target_matches_finding", target == finding.target, f"{target} vs {finding.target}")
         chk("schema_allowed", p.schema_name not in PROTECTED_SCHEMAS, p.schema_name)
         row = ro.execute(
-            "SELECT c.relkind, pg_total_relation_size(c.oid)::bigint AS bytes FROM pg_class c "
+            "SELECT c.relkind, pg_total_relation_size(c.oid)::bigint AS bytes, "
+            "age(c.relfrozenxid)::bigint AS xid_age FROM pg_class c "
             "JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname=%s AND c.relname=%s",
             (p.schema_name, p.table)).fetchone()
         chk("is_ordinary_table", row is not None and row["relkind"] == "r", "table missing or not a plain table")
+        if action.action_id == ActionId.VACUUM_FREEZE and row and row.get("xid_age") is not None:
+            chk(
+                "xid_emergency_ceiling",
+                row["xid_age"] < settings.xid_age_emergency,
+                f"relfrozenxid age {row['xid_age']} >= emergency ceiling {settings.xid_age_emergency}",
+            )
         if action.action_id == ActionId.REINDEX_CONCURRENTLY and row:
             chk("size_limit", row["bytes"] <= settings.reindex_max_bytes, f"{row['bytes']} bytes")
         if action.action_id in _heavy_maintenance_actions() and row and row["relkind"] == "r":

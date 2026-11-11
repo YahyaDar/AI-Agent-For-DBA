@@ -6,7 +6,6 @@ from psycopg import sql
 
 from pgagent.config import settings
 from pgagent.policy.catalog import CATALOG, PidParams, TableParams
-from pgagent.policy.engine import _vacuum_actions
 from pgagent.schemas import ActionId, ExecutionResult, ProposedAction
 
 EXPECTED_STMT = {
@@ -14,6 +13,7 @@ EXPECTED_STMT = {
     ActionId.ANALYZE_TABLE: "VacuumStmt",          # ANALYZE parses as VacuumStmt too
     ActionId.REINDEX_CONCURRENTLY: "ReindexStmt",
     ActionId.TERMINATE_BACKEND: "SelectStmt",
+    ActionId.VACUUM_FREEZE: "VacuumStmt",
 }
 
 
@@ -24,7 +24,8 @@ def build_sql(action: ProposedAction, conn) -> str:
         ident = sql.Identifier(p.schema_name, p.table)
         tmpl = {ActionId.VACUUM_TABLE: "VACUUM {}",
                 ActionId.ANALYZE_TABLE: "ANALYZE {}",
-                ActionId.REINDEX_CONCURRENTLY: "REINDEX TABLE CONCURRENTLY {}"}[action.action_id]
+                ActionId.REINDEX_CONCURRENTLY: "REINDEX TABLE CONCURRENTLY {}",
+                ActionId.VACUUM_FREEZE: "VACUUM (FREEZE) {}"}[action.action_id]
         return sql.SQL(tmpl).format(ident).as_string(conn)
     assert isinstance(p, PidParams)
     # check and kill in ONE statement: only kills if still eligible at this instant
@@ -52,13 +53,15 @@ def snapshot(action: ProposedAction, ro) -> dict:
     p = CATALOG[action.action_id].params(**action.params)
     if isinstance(p, TableParams):
         row = ro.execute(
-            "SELECT n_live_tup::bigint AS live, n_dead_tup::bigint AS dead, "
-            "n_mod_since_analyze::bigint AS mod_since_analyze, last_vacuum, last_analyze, "
-            "(SELECT count(*)::int FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid "
-            " JOIN pg_namespace n ON n.oid = c.relnamespace "
-            " WHERE n.nspname = pg_stat_user_tables.schemaname "
-            " AND c.relname = pg_stat_user_tables.relname AND NOT i.indisvalid) AS invalid_indexes "
-            "FROM pg_stat_user_tables WHERE schemaname=%s AND relname=%s",
+            "SELECT s.n_live_tup::bigint AS live, s.n_dead_tup::bigint AS dead, "
+            "s.n_mod_since_analyze::bigint AS mod_since_analyze, s.last_vacuum, s.last_analyze, "
+            "age(c.relfrozenxid)::bigint AS xid_age, "
+            "pg_indexes_size(c.oid)::bigint AS index_bytes, "
+            "(SELECT count(*)::int FROM pg_index i "
+            " WHERE i.indrelid = c.oid AND NOT i.indisvalid) AS invalid_indexes "
+            "FROM pg_stat_user_tables s "
+            "JOIN pg_class c ON c.oid = s.relid "
+            "WHERE s.schemaname=%s AND s.relname=%s",
             (p.schema_name, p.table)).fetchone()
         return dict(row) if row else {}
     row = ro.execute(
@@ -92,7 +95,17 @@ def verify_postcondition(
         return result
 
     aid = action.action_id
-    if aid in _vacuum_actions():
+    if aid == ActionId.VACUUM_FREEZE:
+        before_age = before.get("xid_age")
+        after_age = after.get("xid_age")
+        if before_age is not None and after_age is not None and after_age >= before_age:
+            return result.model_copy(
+                update={
+                    "status": "failed",
+                    "error": f"postcondition failed: relfrozenxid age did not decrease ({before_age} -> {after_age})",
+                }
+            )
+    elif aid == ActionId.VACUUM_TABLE:
         before_dead = before.get("dead", 0) or 0
         after_dead = after.get("dead", 0) or 0
         if before_dead > 0 and after_dead >= before_dead:
@@ -137,6 +150,20 @@ def verify_postcondition(
                 update={
                     "status": "failed",
                     "error": f"postcondition failed: {after_invalid} invalid index(es) remain after reindex",
+                }
+            )
+        before_idx_sz = before.get("index_bytes")
+        after_idx_sz = after.get("index_bytes")
+        if (
+            before.get("invalid_indexes", 0) == 0
+            and before_idx_sz is not None
+            and after_idx_sz is not None
+            and after_idx_sz > before_idx_sz
+        ):
+            return result.model_copy(
+                update={
+                    "status": "failed",
+                    "error": f"postcondition failed: index size grew ({before_idx_sz} -> {after_idx_sz})",
                 }
             )
     elif isinstance(CATALOG.get(aid).params if CATALOG.get(aid) else None, type) and issubclass(

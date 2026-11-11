@@ -1,6 +1,14 @@
-import argparse, importlib
+import argparse
+import importlib
 
-NAMES = ["bloat", "stale_stats", "idle_in_txn", "replication_lag"]
+NAMES = [
+    "bloat",
+    "stale_stats",
+    "idle_in_txn",
+    "replication_lag",
+    "xid_wraparound",
+    "index_bloat",
+]
 
 def main():
     p = argparse.ArgumentParser(description="Inject or clean up a Postgres fault scenario")

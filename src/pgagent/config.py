@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     kill_requires_blocking: bool = False   # True = only kill idle-in-txn sessions that block others
     lock_wait_seconds: int = 5
     repl_lag_bytes: int = 8 * 1024 * 1024
+    xid_age_warn: int = 100_000_000
+    xid_age_emergency: int = 200_000_000
+    index_bloat_ratio: float = 0.3
+    index_bloat_min_bytes: int = 1_048_576
 
     # policy
     max_actions_per_hour: int = 20
@@ -32,6 +36,7 @@ class Settings(BaseSettings):
             "vacuum_table": 10,
             "reindex_concurrently": 5,
             "terminate_backend": 5,
+            "vacuum_freeze": 5,
         }
     )
     reindex_max_bytes: int = 1_000_000_000
