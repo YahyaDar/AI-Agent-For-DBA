@@ -62,6 +62,10 @@ _Avoid_: Majority vote, ensemble model, retry loop
 Human-confirmed historical diagnosis and remediation records stored as embeddings in the Agent Store and retrieved strictly as untrusted data context during future investigations.
 _Avoid_: Model fine-tuning, agent weights, chat history
 
+**Incident Outcome**:
+The human-confirmed resolution status (`resolved` or `false_positive`) recorded alongside an Incident Memory entry to inform future Advisory Copilot investigations.
+_Avoid_: Feedback label, ticket status, resolution code
+
 ### Throttling & Safety
 
 **Cooldown**:
@@ -75,3 +79,15 @@ _Avoid_: Cooldown, throttle, quota
 **Vacuum Futility**:
 A condition where running `VACUUM` cannot reclaim dead tuples or advance `relfrozenxid` because an older transaction horizon (`OldestXmin`) is pinned by an open transaction, prepared transaction, or replication slot.
 _Avoid_: Vacuum failure, blocked vacuum
+
+**Load Gate**:
+A Policy Engine precondition that blocks autonomous maintenance actions when active foreground load exceeds a safe threshold, escalating instead so human DBAs can decide whether to intervene.
+_Avoid_: Load throttle, circuit breaker, CPU guard
+
+**Lock-Wait Gate**:
+A Policy Engine precondition that blocks autonomous table maintenance (`VACUUM` or `REINDEX`) when a lock-waiter queue is already forming on the target relation, escalating to avoid worsening contention.
+_Avoid_: Lock check, contention guard
+
+**Pooler Cap**:
+A Policy Engine precondition that limits session terminations per cycle and protects allowlisted application roles to prevent connection-pooler retry storms.
+_Avoid_: Kill limit, session throttle, connection cap
