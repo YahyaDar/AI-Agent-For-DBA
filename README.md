@@ -1,6 +1,6 @@
-# AI-Agent-For-DBA: Autonomous & Copilot DBA for PostgreSQL
+# pgAgent: Autonomous & Copilot DBA for PostgreSQL
 
-**AI-Agent-For-DBA** (`ai-agent-for-dba`) is a deterministic, safety-first PostgreSQL health monitoring, autonomous healing, and on-demand AI DBA copilot system. 
+**pgAgent** (`ai-agent-for-dba`) is a deterministic, safety-first PostgreSQL health monitoring, autonomous healing, and on-demand AI DBA copilot system. 
 
 Designed around strict operational guardrails, `pgAgent` separates **deterministic automated remediation** from **LLM-assisted root-cause analysis**, ensuring predictable, auditable actions on production-like PostgreSQL topologies.
 
